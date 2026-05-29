@@ -1,19 +1,12 @@
 # cicd-gitops-101
 
-`cicd-gitops-101` คือ Node service ตัวเล็ก ๆ ที่ห่อด้วย **CI/CD + GitOps pipeline
-ระดับโปรดักชัน** ตัวแอปตั้งใจทำให้ง่ายที่สุด เพราะหัวใจของ repo นี้คือ
-**delivery pipeline** ไม่ใช่ตัวแอป — ด่านตรวจคุณภาพ, สแกน supply chain ของ
-คอนเทนเนอร์, ด่านวัดประสิทธิภาพด้วย k6, จัดการ environment ด้วย Kustomize และ
-GitOps ด้วย ArgoCD ที่มีด่านอนุมัติ production ด้วยมือ
+`cicd-gitops-101` เป็นโปรเจกต์ตัวอย่าง (demo) สาย **CI/CD + GitOps** ที่วาง
+pipeline ระดับโปรดักชันไว้ครบวงจร ตั้งแต่ commit จนถึง production — quality gate,
+สแกน supply chain ของคอนเทนเนอร์, ด่านวัดประสิทธิภาพด้วย k6, จัดการ environment
+ด้วย Kustomize และ GitOps ด้วย ArgoCD ที่มีด่านอนุมัติ production ด้วยมือ
 
-### จะได้เรียนรู้อะไรจาก repo นี้
-
-- เข้าใจ **CI/CD pipeline** จริงทั้งเส้น: PR → quality gate → build → deploy
-- เข้าใจหลักการ **GitOps** (git เป็น source of truth) และวิธีที่ ArgoCD ทำงาน
-- เห็นว่าควรวาง **ด่านคุณภาพ** (lint / test / security / performance) ไว้ตรงไหน และเพราะอะไร
-- เข้าใจการแยก **staging (sync อัตโนมัติ)** ออกจาก **production (อนุมัติด้วยมือ)**
-- เข้าใจ **rollback ที่ถูกวิธี** ด้วย `git revert` แทนการแก้ที่เครื่อง
-- ลองรันทั้งระบบซ้ำได้บนเครื่องตัวเองด้วย `make demo` (kind + ArgoCD)
+ตัวแอปตั้งใจทำให้ง่ายที่สุด เพราะพระเอกของ repo นี้คือ **delivery pipeline**
+ไม่ใช่ตัวแอป — และทุกอย่างรันตามได้จริงบนเครื่องตัวเองด้วย `make demo` (kind + ArgoCD)
 
 ## การเดินทางของโค้ด 1 commit (ดูภาพรวมแบบเห็นภาพ)
 
