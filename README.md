@@ -1,10 +1,10 @@
 # cicd-gitops-101
 
-A small Node service wrapped in a **production-grade CI/CD + GitOps pipeline**.
-The application is intentionally simple — the point of this repo is the
-**delivery pipeline**: quality gates, container supply-chain scanning, k6
-performance gates, Kustomize environments, and ArgoCD GitOps with a manual
-production approval gate.
+Node service ตัวเล็ก ๆ ที่ห่อด้วย **CI/CD + GitOps pipeline ระดับโปรดักชัน**
+ตัวแอปตั้งใจทำให้ง่าย เพราะหัวใจของ repo นี้คือ **delivery pipeline**:
+ด่านตรวจคุณภาพ, สแกน supply chain ของคอนเทนเนอร์, ด่านวัดประสิทธิภาพด้วย k6,
+จัดการ environment ด้วย Kustomize และ GitOps ด้วย ArgoCD ที่มีด่านอนุมัติ
+production ด้วยมือ
 
 ## การเดินทางของโค้ด 1 commit (ดูภาพรวมแบบเห็นภาพ)
 
@@ -15,7 +15,7 @@ production approval gate.
 
 <p align="center">
   <img src="docs/pipeline-flow.gif" alt="แอนิเมชัน CI/CD + GitOps pipeline แบบละเอียด (git graph) รวมการ rollback ด้วย git revert" width="500">
-  <br><sub>ฉบับละเอียด (git graph) — รวมฉาก rollback ด้วย <code>git revert</code> เมื่อ production พัง</sub>
+  <br><sub>ฉบับละเอียด (git graph) — รวมจังหวะ rollback ด้วย <code>git revert</code> เมื่อ production พัง</sub>
 </p>
 
 ลองคิดว่ามันคือ **การเดินทางของโค้ด 1 commit** ตั้งแต่เขียนเสร็จจนถึงมือผู้ใช้ —
@@ -25,7 +25,7 @@ production approval gate.
 เขียนโค้ด → เปิด PR → [ด่านตรวจคุณภาพ] → merge → [สร้าง artifact] → [ส่งขึ้น env] → ผู้ใช้
 ```
 
-### องก์ 1 — เดินทางไปข้างหน้า (commit → ผู้ใช้)
+### 1) เส้นทางปกติ — โค้ดเดินหน้าจาก commit ถึงผู้ใช้
 
 | ด่าน | ไฟล์ | ทำอะไร | ถ้าไม่ผ่าน |
 | --- | --- | --- | --- |
@@ -36,7 +36,7 @@ production approval gate.
 
 > **staging** sync อัตโนมัติ (เร็ว ทดลองได้) แต่ **production** ต้องมีคนกด ([`promote-prod.yaml`](.github/workflows/promote-prod.yaml)) — กันของหลุดขึ้น prod โดยไม่ตั้งใจ
 
-### องก์ 2 — ของพังแล้วย้อนกลับ (rollback ด้วย `git revert`)
+### 2) ตอนของพัง — ย้อนกลับด้วย `git revert`
 
 ถ้าเวอร์ชันใหม่มีปัญหาบน production การ rollback **ไม่ใช่** การ ssh เข้าไปกู้ของที่เครื่อง
 แต่เป็น **git operation** ที่ตรวจสอบได้:
@@ -60,96 +60,94 @@ production approval gate.
 | **ตรวจสอบได้** | git คือความจริงเพียงหนึ่งเดียว อยากรู้ prod รันอะไร? ดู git ได้เลย |
 | **ย้อนกลับได้** | rollback = `git revert` → ArgoCD sync กลับให้เอง |
 
-## What it demonstrates
+## โปรเจกต์นี้โชว์อะไรบ้าง
 
-| Area | What's here |
+| เรื่อง | มีอะไร |
 | --- | --- |
-| CI quality gate | lint, unit tests + coverage, `npm audit`, Trivy filesystem scan |
-| Performance gate | **k6** smoke + load with SLO thresholds (p95 < 200ms, error < 1%) |
-| Container | multi-stage Dockerfile, distroless, non-root, read-only rootfs |
-| Supply chain | Trivy image scan, images pushed to GHCR, tagged by commit SHA |
-| Config management | **Kustomize** base + `staging`/`production` overlays |
-| GitOps | **ArgoCD** Applications; staging auto-syncs, production is manual |
-| Promotion | environment promotion with a GitHub Environment approval gate |
-| Reproducible demo | `make demo` spins up kind + ArgoCD locally |
+| ด่านคุณภาพ CI | lint, unit test + coverage, `npm audit`, Trivy สแกนไฟล์ |
+| ด่านวัดประสิทธิภาพ | **k6** smoke + load มี SLO threshold (p95 < 200ms, error < 1%) |
+| คอนเทนเนอร์ | Dockerfile หลาย stage, distroless, ไม่รันด้วย root, rootfs อ่านอย่างเดียว |
+| ความปลอดภัย supply chain | สแกน image ด้วย Trivy, push ขึ้น GHCR, tag ตาม commit SHA |
+| จัดการ config | **Kustomize** base + overlay `staging`/`production` |
+| GitOps | **ArgoCD** Applications; staging sync อัตโนมัติ, production กดเอง |
+| การ promote | เลื่อนข้าม environment ผ่าน GitHub Environment ที่ต้องมีคนอนุมัติ |
+| ลองรันซ้ำได้ | `make demo` สร้าง kind + ArgoCD บนเครื่องได้เลย |
 
-## Pipeline at a glance
+## ภาพรวม pipeline (ฉบับย่อ)
 
 ```
 PR ─▶ [lint · test · security · k6] ──merge──▶ main
 main ─▶ build image ─▶ Trivy scan ─▶ push GHCR ─▶ bump staging overlay (git commit)
-        ArgoCD sees the commit ─▶ auto-sync STAGING ─▶ k6 perf gate
-        manual approval ─▶ promote-prod ─▶ bump prod overlay ─▶ ArgoCD manual-sync PRODUCTION
+        ArgoCD เห็น commit ─▶ auto-sync STAGING ─▶ ด่าน k6 perf
+        คนอนุมัติ ─▶ promote-prod ─▶ bump prod overlay ─▶ ArgoCD manual-sync PRODUCTION
 ```
 
-Full diagram + design rationale: [docs/architecture.md](docs/architecture.md).
+ไดอะแกรมเต็ม + เหตุผลการออกแบบ: [docs/architecture.md](docs/architecture.md)
 
-## Repository layout
+## โครงสร้างโปรเจกต์
 
 ```
-app/                  Node (Express) service + tests + Dockerfile
-tests/k6/             k6 smoke / load / stress scenarios (shared SLO thresholds)
+app/                  Node (Express) service + เทส + Dockerfile
+tests/k6/             k6 smoke / load / stress (ใช้ SLO threshold ร่วมกัน)
 gitops/
   base/               Kustomize base (Deployment, Service, HPA)
-  overlays/staging/   staging config (CI auto-bumps the image tag here)
-  overlays/production/ production config (promoted manually)
+  overlays/staging/    config staging (CI bump image tag ที่นี่อัตโนมัติ)
+  overlays/production/ config production (promote เองด้วยมือ)
 argocd/               ArgoCD Application manifests (staging + production)
 .github/workflows/    ci.yaml · build.yaml · promote-prod.yaml
-Makefile              local dev + kind/ArgoCD demo targets
+Makefile              คำสั่ง dev + เดโม kind/ArgoCD บนเครื่อง
 ```
 
-## Quickstart (local)
+## เริ่มใช้งาน (บนเครื่อง)
 
 ```bash
-# 1. App: install, test, run
+# 1. แอป: ติดตั้ง, เทส, รัน
 make install
 make test
 make run            # http://localhost:3000/api/hello?name=you
 
-# 2. Container + k6  (host port 3001 -> container 3000)
-make docker-build                       # builds image tagged cicd-gitops-101:dev
+# 2. คอนเทนเนอร์ + k6  (host port 3001 -> container 3000)
+make docker-build                       # build image ชื่อ cicd-gitops-101:dev
 docker run -d -p 3001:3000 --name demo cicd-gitops-101:dev
 curl localhost:3001/healthz
 BASE_URL=http://localhost:3001 make k6-smoke
 docker rm -f demo
 
-# 3. Full GitOps demo on a local cluster (needs kind + kubectl + argocd)
-make demo           # kind cluster + ArgoCD + register Applications
-make argocd-ui      # then open https://localhost:8080
+# 3. เดโม GitOps เต็มรูปแบบบน cluster ในเครื่อง (ต้องมี kind + kubectl + argocd)
+make demo           # สร้าง kind cluster + ArgoCD + ลงทะเบียน Applications
+make argocd-ui      # แล้วเปิด https://localhost:8080
 make argocd-password
 ```
 
-## Before you push it to GitHub
+## ก่อน fork ไปใช้เอง
 
-The ArgoCD / Kustomize manifests are configured for **`ponpond`** — image
-`ghcr.io/ponpond/cicd-gitops-101`, repo `github.com/ponpond/cicd-gitops-101`.
-If you fork this, point them at your own account:
+manifest ทั้งหมด (ArgoCD / Kustomize) ตั้งค่าไว้สำหรับ **`ponpond`** แล้ว —
+image `ghcr.io/ponpond/cicd-gitops-101`, repo `github.com/ponpond/cicd-gitops-101`
+ถ้า fork ไปใช้ ให้ชี้มาที่บัญชีตัวเอง:
 
 ```bash
 grep -rl ponpond . --exclude-dir=.git | xargs sed -i '' 's/ponpond/<your-username>/g'   # macOS
 ```
 
-Then, in the GitHub repo settings:
+จากนั้นใน Settings ของ repo:
 
-1. **Generate the lockfile**: `make install` and commit `app/package-lock.json`
-   (CI uses `npm ci`, which requires it).
-2. **Environments → `production`**: add yourself as a required reviewer to arm
-   the production approval gate.
-3. **Branch protection on `main`**: require the CI checks to pass before merge.
+1. **สร้าง lockfile**: รัน `make install` แล้ว commit `app/package-lock.json`
+   (CI ใช้ `npm ci` ซึ่งต้องมีไฟล์นี้)
+2. **Environments → `production`**: เพิ่มตัวเองเป็น required reviewer เพื่อเปิดด่านอนุมัติ production
+3. **Branch protection บน `main`**: บังคับให้ CI ผ่านก่อน merge
 
-## Talking points (interview)
+## ประเด็นเล่าได้ (ตอนสัมภาษณ์)
 
-- **GitOps over imperative deploys** — git is the source of truth; CI never
-  touches the cluster; rollback is `git revert`.
-- **Build once, promote the artifact** — the exact image that passed staging is
-  what reaches production (no per-env rebuilds).
-- **Defense in depth on the supply chain** — dependency audit, filesystem scan,
-  image scan, distroless + non-root runtime.
-- **Performance as a gate, not an afterthought** — k6 thresholds fail the
-  pipeline when latency/error SLOs regress.
-- **Human gate where it matters** — staging is automated for speed; production
-  requires explicit approval.
+- **GitOps แทนการ deploy แบบสั่งมือ** — git คือ source of truth; CI ไม่แตะ
+  cluster; rollback คือ `git revert`
+- **build ครั้งเดียว แล้ว promote artifact เดิม** — image ตัวที่ผ่าน staging คือ
+  ตัวเดียวกับที่ขึ้น production (ไม่ build ใหม่แยกตาม env)
+- **ป้องกันหลายชั้นบน supply chain** — audit dependency, สแกนไฟล์, สแกน image,
+  runtime แบบ distroless + non-root
+- **ประสิทธิภาพเป็นด่าน ไม่ใช่คิดทีหลัง** — k6 threshold ทำให้ pipeline fail
+  เมื่อ latency/error เกิน SLO
+- **ใส่ด่านคนตรงที่ควรใส่** — staging อัตโนมัติเพื่อความเร็ว; production ต้องอนุมัติก่อน
 
-## License
+## สัญญาอนุญาต (License)
 
 MIT
