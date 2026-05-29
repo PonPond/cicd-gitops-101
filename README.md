@@ -195,7 +195,7 @@ grep -rl ponpond . --exclude-dir=.git | xargs sed -i '' 's/ponpond/<your-usernam
 2. **Environments → `production`**: เพิ่มตัวเองเป็น required reviewer เพื่อเปิดด่านอนุมัติ production
 3. **Branch protection บน `main`**: บังคับให้ CI ผ่านก่อน merge
 
-## ประเด็นเล่าได้ (ตอนสัมภาษณ์)
+## เหตุผลเชิงออกแบบ (design decisions)
 
 - **GitOps แทนการ deploy แบบสั่งมือ** — git คือ source of truth; CI ไม่แตะ
   cluster; rollback คือ `git revert`
