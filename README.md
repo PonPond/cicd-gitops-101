@@ -60,6 +60,65 @@ production ด้วยมือ
 | **ตรวจสอบได้** | git คือความจริงเพียงหนึ่งเดียว อยากรู้ prod รันอะไร? ดู git ได้เลย |
 | **ย้อนกลับได้** | rollback = `git revert` → ArgoCD sync กลับให้เอง |
 
+## อธิบายละเอียดทีละขั้น (ถ้าดู GIF แล้วยังไม่อิน)
+
+นี่คือสิ่งที่เกิดขึ้น **จริง ๆ** ในแต่ละขั้น อ้างอิงไฟล์จริงใน repo:
+
+### ขั้นที่ 1 — เปิด PR เข้า `main` → CI รันทันที ([`ci.yaml`](.github/workflows/ci.yaml))
+
+- **เมื่อไหร่:** ทุกครั้งที่เปิดหรืออัปเดต Pull Request ที่ยิงเข้า branch `main`
+- **รัน 4 job พร้อมกัน (ขนาน):**
+  - `lint` — `npm ci` แล้ว `npm run lint` (ESLint) — เช็คสไตล์/บั๊กเบื้องต้น
+  - `test` — `npm run test:ci` — unit test + coverage
+  - `security` — 2 ชั้น:
+    - `npm audit --omit=dev --audit-level=high` — เช็ค dependency ที่ใช้จริง (ไม่รวม dev) ถ้าเจอช่องโหว่ระดับ high ขึ้นไป → fail
+    - **Trivy** สแกนไฟล์ (`scan-type: fs`) ระดับ `HIGH,CRITICAL` เจอแล้ว `exit-code: 1` (ข้ามตัวที่ยังไม่มี fix ด้วย `ignore-unfixed`)
+  - `k6` — ทดสอบจริงบน container:
+    - build image → `docker run` → วน `curl /readyz` รอจน service พร้อม (สูงสุด 30 วิ)
+    - `k6 run smoke.js` (ดูว่ารับ request ได้) แล้ว `k6 run load.js` (**ด่าน perf** — fail ถ้า p95 หรือ error เกิน SLO)
+- **ผลลัพธ์:** job ไหน fail → PR ขึ้นสถานะแดง → ถ้าเปิด branch protection ไว้ **merge ไม่ได้**
+
+### ขั้นที่ 2 — คนรีวิว แล้ว merge
+
+- มีคนกด **Approve** บน PR (บังคับด้วย branch protection)
+- merge เข้า `main` → จุดนี้คือเส้นแบ่ง "ผ่านด่านคุณภาพแล้ว"
+
+### ขั้นที่ 3 — push เข้า `main` → build artifact ([`build.yaml`](.github/workflows/build.yaml))
+
+- **เมื่อไหร่:** ทุกครั้งที่มี commit ใหม่บน `main` (รวมถึงตอน merge)
+- `test` (รันซ้ำอีกที เป็น gate ก่อน build) → `lint` + `test:ci`
+- `build-and-push`:
+  - คำนวณชื่อ image เป็นตัวพิมพ์เล็ก `ghcr.io/<owner>/<repo>` และ **tag = `sha-` + 7 ตัวแรกของ commit** (เช่น `sha-abc1234`) → ทุก build มี tag เฉพาะตัว ไม่ทับกัน
+  - login เข้า **GHCR** ด้วย `GITHUB_TOKEN`
+  - build จากโฟลเดอร์ `app/` แล้ว push 2 tag: `:sha-xxxxxxx` และ `:latest` (มี layer cache แบบ gha ให้เร็วขึ้น)
+  - **Trivy** สแกน image ที่เพิ่ง build (`HIGH,CRITICAL`) — เจอช่องโหว่ → fail ไม่ปล่อยต่อ
+- `promote-staging` — **หัวใจของ GitOps:**
+  - `kustomize edit set image` ไปแก้ image tag ใน `gitops/overlays/staging`
+  - `ci-bot` **commit + push การเปลี่ยน tag กลับเข้า git** → นี่คือ "เขียนเวอร์ชันใหม่ลง git" ที่เห็นใน GIF
+
+### ขั้นที่ 4 — ArgoCD เห็น commit → deploy staging อัตโนมัติ ([`argocd/staging.yaml`](argocd/staging.yaml))
+
+- ArgoCD Application `staging` เฝ้าดู repo ที่ path `gitops/overlays/staging` branch `main`
+- `syncPolicy.automated` เปิดไว้:
+  - `prune: true` — ลบ resource ที่หายไปจาก git ออกจาก cluster ด้วย
+  - `selfHeal: true` — ถ้ามีใครไปแก้ cluster ด้วยมือ ArgoCD **ดึงกลับให้ตรง git**
+  - `CreateNamespace=true` — สร้าง namespace `demo-staging` ให้เอง
+- สรุป: พอ tag ใน git เปลี่ยน → ArgoCD ปรับ cluster ให้ตรงเองภายในไม่กี่นาที **ไม่มีใคร `kubectl apply` ด้วยมือ**
+
+### ขั้นที่ 5 — promote ขึ้น production (ด้วยมือ) ([`promote-prod.yaml`](.github/workflows/promote-prod.yaml))
+
+- **ไม่ทำอัตโนมัติ** — ต้องไปกดที่แท็บ **Actions → Promote to Production** เอง (`workflow_dispatch`) แล้วใส่ `image_tag` ตัวที่ผ่าน staging มาแล้ว
+- `environment: production` → ถ้าตั้ง **required reviewers** ไว้ workflow จะ**ค้างรอคนอนุมัติ**ก่อน (= ด่านคนใน GIF)
+- หลังอนุมัติ: `kustomize edit set image` ใน `gitops/overlays/production` → `ci-bot` commit + push
+- ArgoCD ฝั่ง production เป็น **manual-sync** → ต้องไปกด **Sync** ใน ArgoCD อีกที (ปลอดภัยอีกชั้น)
+
+### ขั้นที่ 6 — ถ้า production พัง → rollback ด้วย `git revert`
+
+- `git revert` commit ที่ bump tag (หรือแก้ tag กลับเป็นตัวเดิม) แล้ว `push`
+- ArgoCD เห็น git เปลี่ยน → sync cluster **กลับเป็นเวอร์ชันเดิม**
+- ไม่ต้อง build ใหม่ เพราะ image เก่ายังอยู่ใน GHCR — แค่ชี้ tag กลับ
+- ประวัติครบ: ดู git log ได้ว่าใครย้อน ตอนไหน เพราะอะไร
+
 ## โปรเจกต์นี้โชว์อะไรบ้าง
 
 | เรื่อง | มีอะไร |
